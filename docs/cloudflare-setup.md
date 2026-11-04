@@ -83,14 +83,14 @@ dig +short A vpn.你的域名 @1.1.1.1
 
 原理：
 
-| 模式 | Cloudflare → 源站 | 能不能用 |
+| 模式 | Cloudflare → 源站 | 说明 |
 |---|---|---|
 | Off | 明文 | 不安全，不用 |
-| **Flexible** | **明文 HTTP / 80** | ✅ 源站 443 被墙时唯一可行 |
-| Full | HTTPS / 443 | ❌ 源站 443 封了就连不上 |
+| **Flexible** | **明文 HTTP（80）** | ✅ 本项目用这个 |
+| Full | HTTPS（443） | ❌ 源站只开了 80，连不上 |
 | Full (strict) | HTTPS + 校验证书 | ❌ 同上 |
 
-因为整套方案的设计前提就是「源站 443 不可达」，所以**必须 Flexible**，让 Cloudflare 用 80 端口回源。
+本项目的 nginx 只监听 80 端口，所以**必须选 Flexible**，让 Cloudflare 用 80 回源。
 
 ## 三、常见坑
 
