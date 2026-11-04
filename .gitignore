@@ -1,0 +1,15 @@
+# 本地实际部署产生的敏感文件，不要提交
+node-info.txt
+xray-node.txt
+clash.yaml
+*.local.yaml
+*.local.json
+sub-token.txt
+.env
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
