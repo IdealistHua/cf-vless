@@ -371,3 +371,57 @@ vnstat -m -i eth0
 4. **别在 SSH 里粘贴大段文本。** scp 传文件，或者 `curl -O`。
 5. **CDN 方案解决的是「连不上」，不是「慢」。** 延迟是物理距离决定的，换 CDN 不会变快。
 6. **机房 IP 有天花板。** LinkedIn、银行、部分电商会按 ASN 拒绝，这不是配置能解决的。
+
+---
+
+## 附录：收尾时的体检与清理
+
+搭完之后又花了一轮做「减负」——因为试错过程会在服务器上堆积东西。写了一个体检脚本（`vps-check`），只读模式打印 10 个区块：服务状态、端口监听、Xray 配置摘要、nginx 站点、/tmp 残留、/root 脚本、备份数量、定时任务、磁盘、订阅目录。
+
+清理时发现了几样**完全不该在那儿**的东西：
+
+| 发现 | 风险 |
+|---|---|
+| 两个 WireGuard 网卡（`XWQ` / `XDH`），`UP,LOWER_UP` | 可能抢路由，走 UDP 与方案无关 |
+| Docker 在跑，容器 `wg-easy` | 一个 WireGuard 网页面板 |
+| `wg-easy` 监听 `0.0.0.0:51821`、`0.0.0.0:51820` | **管理面板直接暴露在公网** |
+
+`51821` 是 wg-easy 的 Web UI，默认虽然有密码，但对公网开放本身就是靶子。这些大概率是早期试别的教程（angristan 的 `wireguard-install`）留下的。
+
+清理顺序：
+
+```bash
+# 1. WireGuard
+systemctl disable --now wg-quick@XWQ wg-quick@XDH
+ip link del XWQ; ip link del XDH
+rm -f /etc/wireguard/*.conf /etc/wireguard/params
+
+# 2. wg-easy 容器
+docker rm -f wg-easy
+docker system prune -af
+
+# 3. Docker 整套
+systemctl disable --now docker docker.socket containerd
+apt purge -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+apt autoremove -y
+
+# 4. docker0 网桥（内核对象，purge 不会删）
+ip link del docker0
+```
+
+清理后的最终状态：
+
+```
+ip route
+  default via 107.150.2.1 dev eth0
+  107.150.2.0/24 dev eth0
+
+ss -tlnp
+  0.0.0.0:80        nginx
+  127.0.0.1:8080    xray
+  0.0.0.0:22        sshd
+```
+
+只剩四件事：nginx、xray、sshd、vnstat。每一样都必须存在，多一样都没有。
+
+**教训**：搭完之后跑一次体检，比出问题再翻要省事得多。尤其是「公网监听」这一项——`ss -tlnp` 里每一个 `0.0.0.0` 都值得看一眼它是谁。
