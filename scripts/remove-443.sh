@@ -3,7 +3,7 @@
 # 清理 443 直连节点，订阅回到单节点（走 Cloudflare）
 #
 #   用法：bash remove-443.sh <你的域名>
-#   例：  bash remove-443.sh racknerd.idealist.dpdns.org
+#   例：  bash remove-443.sh vpn.example.com
 #
 #   做了什么：
 #     1. 备份配置

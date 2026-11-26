@@ -122,20 +122,25 @@ cat > "$SUB_ROOT/$TOKEN/sub.yaml" <<YAML
 mixed-port: 7890
 allow-lan: false
 mode: rule
-log-level: info
+log-level: warning
 ipv6: false
+tcp-concurrent: true
+unified-delay: true
+
+profile:
+  store-selected: true
+  store-fake-ip: true
+
 dns:
   enable: true
+  ipv6: false
   enhanced-mode: fake-ip
   fake-ip-range: 198.18.0.1/16
   nameserver:
     - 223.5.5.5
     - 119.29.29.29
-  fallback:
-    - 1.1.1.1
-    - 8.8.8.8
 proxies:
-  - name: CF-VLESS
+  - name: CF-中转
     type: vless
     server: $DOMAIN
     port: 443
@@ -150,20 +155,22 @@ proxies:
       headers:
         Host: $DOMAIN
 proxy-groups:
-  - name: PROXY
+  - name: 节点选择
     type: select
     proxies:
-      - CF-VLESS
+      - CF-中转
       - DIRECT
 rules:
+  - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
   - DOMAIN-SUFFIX,cn,DIRECT
-  - GEOIP,CN,DIRECT
-  - MATCH,PROXY
+  - GEOIP,CN,DIRECT,no-resolve
+  - MATCH,节点选择
 YAML
 
 cp "$SUB_ROOT/$TOKEN/sub.yaml" /root/clash.yaml
 
-VLESS="vless://$UUID@$DOMAIN:443?encryption=none&security=tls&sni=$DOMAIN&fp=chrome&type=ws&host=$DOMAIN&path=%2Fws#CF-VLESS"
+VLESS="vless://$UUID@$DOMAIN:443?encryption=none&security=tls&sni=$DOMAIN&fp=chrome&type=ws&host=$DOMAIN&path=%2Fws#CF-中转"
 
 cat > /root/xray-node.txt <<NODE
 域名        : $DOMAIN

@@ -68,7 +68,7 @@ sleep 3
 curl -s --max-time 12 -x socks5h://127.0.0.1:10808 https://ipinfo.io/ip
 ```
 
-返回 `107.150.2.73`（自己的 IP），日志里出现：
+返回 `你的VPS_IP`（自己的 IP），日志里出现：
 
 ```
 proxy/vless/outbound: tunneling request to tcp:ipinfo.io:443 via 127.0.0.1:443
@@ -86,7 +86,7 @@ proxy/vless/outbound: tunneling request to tcp:ipinfo.io:443 via 127.0.0.1:443
 $ports = 22,80,443,8443
 foreach ($p in $ports) {
   $c = New-Object System.Net.Sockets.TcpClient
-  try { $null = $c.ConnectAsync("107.150.2.73", $p).Wait(2500); $ok = $c.Connected } catch { $ok = $false }
+  try { $null = $c.ConnectAsync("你的VPS_IP", $p).Wait(2500); $ok = $c.Connected } catch { $ok = $false }
   $c.Close()
   "$p`t$ok"
 }

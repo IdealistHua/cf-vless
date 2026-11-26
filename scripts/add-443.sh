@@ -3,7 +3,7 @@
 # 在现有 CF + VLESS/WS 部署上，追加一个 443 直连 REALITY 节点
 #
 #   用法：bash add-443.sh <你的域名>
-#   例：  bash add-443.sh racknerd.idealist.dpdns.org
+#   例：  bash add-443.sh vpn.example.com
 #
 #   结果：订阅里变成两个节点
 #     - 直连-洛杉矶     直连 VPS:443（不走 CDN，延迟更低，支持 UDP）
@@ -225,4 +225,4 @@ cat "$NODE443"
 echo "============================================"
 echo ""
 echo "客户端里删掉旧订阅重新导入（或点「更新」）。"
-echo "先试 DIRECT-REALITY，不行就切 CF-VLESS。"
+echo "先试 直连-洛杉矶，不行就切 CF-中转。"

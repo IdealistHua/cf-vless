@@ -252,6 +252,87 @@ timeout 40 tcpdump -ni any 'tcp port 443 and host <你的家宽公网IP>' -c 20
 
 ---
 
+## 4.6 改了订阅之后，所有节点突然全超时
+
+这是**自己把自己搞死**的典型。特征是：
+
+- 订阅能正常导入（说明网络和 nginx 都正常）
+- 服务器日志一片安静（说明流量根本没发出来）
+- 客户端所有节点 `Timeout` / `Error`
+
+### 最常见的原因：DNS 配置
+
+```yaml
+# ❌ 这两段是杀手
+find-process-mode: strict
+dns:
+  fallback:
+    - https://1.1.1.1/dns-query
+  fallback-filter:
+    geoip: true
+```
+
+- `fallback-filter.geoip: true` 需要 GeoIP 数据库。客户端没有或版本不对，**整个 DNS 模块初始化失败**
+- DNS 一挂，连代理服务器的域名都解析不出来 → 所有节点超时
+- `find-process-mode: strict` 在 Windows 非管理员权限下也会直接报错
+
+### 怎么确认
+
+看客户端日志（Clash Verge：左侧「日志」；FlClash：工具 → 日志），会有类似：
+
+```
+level=error msg="Start initial configuration in progress"
+level=error msg="initial proxy failed: ... dns ..."
+```
+
+### 怎么修
+
+**立刻回滚**，不要在坏配置上继续调：
+
+```bash
+cp $(ls -t /var/www/sub/*/sub.yaml.bak.* | head -1) $(ls /var/www/sub/*/sub.yaml)
+```
+
+客户端刷新订阅，节点应该立刻恢复。
+
+### 正确的加法
+
+一次只加一处，加完先测节点再继续：
+
+| 可以加 | 风险 |
+|---|---|
+| `tcp-concurrent: true` | 低 |
+| `unified-delay: true` | 低 |
+| `profile.store-fake-ip` | 低 |
+| `IP-CIDR,私有网段,DIRECT,no-resolve` | 低 |
+| `rule-providers` + `RULE-SET` | 中（规则下载失败会缺规则，但不断网） |
+| `GEOSITE,...` | 中（内核没有 geosite 数据会报错） |
+| `dns.fallback` + `fallback-filter` | **高，别加** |
+| `find-process-mode: strict` | **高，别加** |
+
+---
+
+## 4.7 住宅节点不通 / 分流没生效
+
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| `住宅-US` 一直 Error | 用了 HTTP 端口，但节点写的是 `socks5` | 回服务商面板看 `Protocol` 下拉，取 SOCKS5 的端口 |
+| `住宅-US` 慢到不可用 | 少了 `dialer-proxy` | 节点里必须写 `dialer-proxy: "CF-中转"`，否则客户端会从国内直连美国住宅代理 |
+| 分流规则不生效 | 改的是客户端配置 | 改服务端 `sub.yaml`，客户端刷新 |
+| 所有流量都走了住宅 | `MATCH` 指向了住宅组 | 改成 `MATCH,节点选择` |
+| 住宅 IP 用了几天就失效 | 到期或流量用尽 | 面板看 `Expire date` 和 `Remaining traffic` |
+| 网站还是提示地区不支持 | 该站点按账号或地区判定，不是 IP | 换节点对比，或用机场原生节点 A/B |
+
+验证住宅链路是否通（在服务器上跑最直接）：
+
+```bash
+curl -x socks5h://USER:PASS@HOST:PORT -s -m 25 https://ipinfo.io/json
+```
+
+返回住宅 IP 就说明代理本身没问题，问题在客户端配置。
+
+---
+
 ## 5. 应急：IP 被彻底封了怎么办
 
 RackNerd 支持免费换 IP（开工单，一般几小时内回复）：
@@ -274,3 +355,70 @@ Thank you.
 ⚠️ 换 IP 后记得同步更新 Cloudflare 的 A 记录，否则 CDN 会指向旧 IP（表现为 522）。
 
 > 注意：如果已经在用本项目的 Cloudflare 方案，**IP 被墙的影响会小很多**——因为流量从 80 端口经 CF 进来，443 被封不影响。真正需要换 IP 的场景是「连 80 端口都被封」。
+
+---
+
+## 6. 客户端：两个代理内核在抢流量
+
+**这是最容易被误判成「服务器坏了」的问题。** 我们实际踩过，花了几个小时才找到。
+
+### 症状
+
+- 客户端所有节点 `Timeout`
+- 但服务器一切正常：服务 `active`、端口在听、回环测试能通、订阅能拉
+- 换手机、换网络（4G）也一样
+
+### 排查
+
+Windows 上列出所有监听端口和对应进程：
+
+```powershell
+Get-NetTCPConnection -State Listen | Where-Object LocalPort -ge 7800 |
+  Select-Object LocalPort, OwningProcess
+```
+
+```powershell
+Get-Process -Id <上面查到的PID> | Select-Object Id, ProcessName, Path
+```
+
+如果看到**两个代理内核**同时在跑，就是它：
+
+```
+12160  iKuuuVPNCore   D:\Program Files\iKuuu_vpn\app\iKuuuVPNCore.exe   监听 7892
+10132  verge-mihomo   D:\Program Files\Clash Verge\verge-mihomo.exe     监听 7897
+```
+
+系统流量被其中一个截走，送进它自己的死节点，另一个客户端自然全超时。
+
+### 处理
+
+**只留一个代理软件**：
+
+- 托盘图标右键 → 退出（不是关窗口）
+- 检查开机自启：任务管理器 → 启动 → 把不用的代理软件禁用
+- 手机上同理：设置 → VPN → 确认只有 FlClash 一个
+
+### 判断口诀
+
+> **服务器日志一片安静 = 流量没出来 = 问题在客户端。**
+> 这时候修改服务器是浪费时间。
+
+### 顺带：别把配置文件粘进命令行
+
+高发错误：
+
+```
+root@vps:~# fallback:
+fallback:: command not found
+root@vps:~# geoip: true
+geoip:: command not found
+```
+
+这些是 **YAML 文件里的行**，不是命令。分辨方法：
+
+| 长得像 | 性质 |
+|---|---|
+| `ls` / `cp` / `bash` / `grep` / `systemctl` 开头 | 命令，粘进终端 |
+| 带 `:`、缩进、`- https://`、`proxies:` | 文件内容，只能写进文件 |
+
+另一个高发错误：把 Windows 的 `scp` 命令粘进 SSH 会话里执行。`scp` 必须在 **PowerShell 窗口**（提示符 `PS C:\Users\...>`）跑，不是服务器窗口（提示符 `root@...:~#`）。
